@@ -13,12 +13,14 @@
 
 (defconst goal-extended-dark-age 0)
 (defconst goal-minimal-farming 1)
-(defconst goal-low-priority-lumber-camps 2)
+(defconst goal-lumber-camp-strictness 2)
 (defconst goal-food-located 3)
 
 (defconst farm-count-minimal 4)
-(defconst farm-timer 1)
+(defconst timer-farm 1)
 (defconst farm-delay 25)
+
+(defconst timer-attack-cooldown 2)
 
 
 ; Train villagers
@@ -38,7 +40,7 @@
 )
 
 (defrule
-(civilian-population < max-villagers)
+    (civilian-population < max-villagers)
     (current-age == feudal-age)
     (can-train villager) =>
 
@@ -49,17 +51,17 @@
 (defrule
     (goal goal-extended-dark-age 1) =>
         (set-goal goal-minimal-farming 1)
-        (enable-timer farm-timer 1)
+        (enable-timer timer-farm 1)
 )
 
 ; Farm during extended dark age
 (defrule
-    (timer-triggered farm-timer)
+    (timer-triggered timer-farm)
     (goal goal-minimal-farming 1)
     (building-type-count farm < farm-count-minimal) =>
         (build farm)
-        (disable-timer farm-timer)
-        (enable-timer farm-timer farm-delay)
+        (disable-timer timer-farm)
+        (enable-timer timer-farm farm-delay)
 )
 
 ; Detect extended dark age
@@ -104,7 +106,8 @@
 (defrule
     (current-age == feudal-age)
     (population-headroom > 0)
-    (housing-headroom <= 2) =>
+    (housing-headroom <= 2)
+    (up-pending-objects c: house == 0) =>
         (build house)
 )
 
@@ -113,6 +116,7 @@
     (current-age == dark-age)
     (population-headroom > 0)
     (housing-headroom <= 2)
+    (up-pending-objects c: house == 0)
     (or 
         (building-type-count house < 4 )
         (goal goal-extended-dark-age 1)
@@ -170,7 +174,7 @@
 ; Start wood cutting when needed
 (defrule
     (wood-amount <= low-wood-amount) =>
-        (set-strategic-number sn-maximum-wood-drop-distance 6)
+        (set-strategic-number sn-maximum-wood-drop-distance 10)
         (set-strategic-number sn-wood-gatherer-percentage 15)
         (disable-self)
 )
@@ -181,14 +185,14 @@
     (building-type-count mill >= 1)
     (wood-amount >= 120) =>
         (build lumber-camp)
-        (set-goal goal-low-priority-lumber-camps 1)
+        (set-goal goal-lumber-camp-strictness 1)
         (disable-self)
 )
 
 
 ; Begin building lumber mills only if really really needed
 (defrule
-    (goal goal-low-priority-lumber-camps 1) 
+    (goal goal-lumber-camp-strictness 1) 
     (can-build lumber-camp)
     (dropsite-min-distance wood > low-priority-lumber-camp-drop-distance) =>
         (build lumber-camp)
@@ -208,6 +212,16 @@
 
 (defrule
     (current-age == feudal-age)
+    (housing-headroom < 10)
+    (population-headroom > 0)
+    =>
+    (up-assign-builders c: house c: 2)
+    (build house)
+)
+
+
+(defrule
+    (current-age == feudal-age)
     (building-type-count barracks >= 1) =>
         (research ri-man-at-arms)      
 )
@@ -215,15 +229,17 @@
 
 (defrule 
     (current-age == feudal-age)
-    (building-type-count farm < 20) =>
+    (building-type-count farm < 15)
+    (wood-amount > 100) =>
         (build farm)
 )
 
 
 (defrule 
     (current-age == feudal-age)
+    (wood-amount > 100)
     (building-type-count barracks >= 2)
-    (building-type-count farm < 40) =>
+    (building-type-count farm < 30) =>
         (build farm)
 )
 
@@ -231,7 +247,8 @@
 (defrule 
     (current-age == feudal-age)
     (building-type-count barracks >= 4)
-    (building-type-count farm < 60) =>
+    (wood-amount > 100)
+    (building-type-count farm < 45) =>
         (build farm)
 )
 
@@ -239,7 +256,7 @@
 (defrule 
     (current-age == feudal-age)
     (building-type-count barracks >= 6)
-    (building-type-count farm < 80) =>
+    (building-type-count farm < 60) =>
         (build farm)
 )
 
@@ -248,30 +265,29 @@
 (defrule
     (current-age == feudal-age)
     (dropsite-min-distance food > 5) => 
+        (set-strategic-number sn-preferred-mill-placement 0)
         (build mill)
 )
 
 (defrule 
     (current-age == feudal-age)
     (building-type-count blacksmith == 0)
+    (up-pending-objects c: blacksmith == 0)
     (wood-amount > 250) =>
         (build blacksmith)
 )
 
 (defrule
-    (building-type-count blacksmith == 1)
     (can-research ri-forging) =>
         (research ri-forging)
 )
 
 (defrule
-    (building-type-count blacksmith == 1)
     (can-research ri-fletching) =>
         (research ri-fletching)
 )
 
 (defrule
-    (building-type-count blacksmith == 1)
     (can-research ri-scale-mail) =>
         (research ri-scale-mail)
 )
@@ -291,7 +307,14 @@
 
 (defrule
     (military-population > 10)
-    (game-time > 1200) =>
+    (game-time > 1200)
+    (or
+        (timer-triggered timer-attack-cooldown)
+        (up-timer-status timer-attack-cooldown == timer-disabled)
+    )
+    =>
+        (disable-timer timer-attack-cooldown)
+        (enable-timer timer-attack-cooldown 60)
         (attack-now)
 )
 
@@ -336,4 +359,18 @@
         (set-strategic-number sn-wood-gatherer-percentage 30)
         (set-strategic-number sn-food-gatherer-percentage 50)
         (set-strategic-number sn-gold-gatherer-percentage 20)
+)
+
+(defrule
+    (civilian-population > 40)
+    (building-type-count mill < 3) 
+    =>
+    (build mill)
+)
+
+(defrule
+    (civilian-population > 80)
+    (building-type-count mill < 4) 
+    =>
+    (build mill)
 )

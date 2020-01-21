@@ -1,10 +1,25 @@
 (defconst sheep 958)
 
+
 (defrule
     (true) =>
+        (set-strategic-number sn-attack-intelligence 1)
+        (set-strategic-number sn-camp-max-distance 1000)
+        (set-strategic-number sn-mill-max-distance 1000)
+        (set-strategic-number sn-ignore-attack-group-under-attack 1)
+        (set-strategic-number sn-number-attack-groups 3)
+        (set-strategic-number sn-percent-attack-soldiers 100)
+        (set-strategic-number sn-enable-new-building-system 1)
+        (set-strategic-number sn-task-ungrouped-soldiers 1)
+        (set-strategic-number sn-object-repair-level 5)
         (set-strategic-number sn-consecutive-idle-unit-limit 0)
-        (set-strategic-number sn-maximum-town-size 20)
+        (set-strategic-number sn-maximum-town-size 25)
         (set-strategic-number sn-total-number-explorers 1)
+        (disable-self)
+)
+
+(defrule
+    (true) =>
 
         (set-strategic-number sn-initial-exploration-required 0)
 
@@ -16,9 +31,9 @@
 
         (set-strategic-number sn-maximum-wood-drop-distance 0)
         (set-strategic-number sn-maximum-hunt-drop-distance 20)
-        (set-strategic-number sn-maximum-food-drop-distance 5)
-        (set-strategic-number sn-maximum-gold-drop-distance 2)
-        (set-strategic-number sn-maximum-stone-drop-distance 2)
+        (set-strategic-number sn-maximum-food-drop-distance 15)
+        (set-strategic-number sn-maximum-gold-drop-distance 4)
+        (set-strategic-number sn-maximum-stone-drop-distance 4)
 
         (set-strategic-number sn-cap-civilian-builders 4)
         (set-strategic-number sn-percent-civilian-builders 100)
