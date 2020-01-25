@@ -2,104 +2,289 @@
 (load "TheDarkCheese/user patch constants")
 
 (defconst extended-dark-age-food-threshold 350)
+(defconst extended-dark-age-early-food-threshold 220)
 (defconst extended-dark-age-pop-threshold 25)
 (defconst extended-dark-age-warning 24)
 (defconst minimum-dark-age-population 23)
+(defconst extended-dark-age-early-warning 21)
 
+(defconst villager-almost-done-time 20)
+(defconst timer-villager-almost-done 1)
 (defconst max-villagers 200)
 
-(defconst low-wood-amount 10)
-(defconst low-priority-lumber-camp-drop-distance 8)
+(defconst low-wood-amount 30)
+(defconst low-priority-lumber-drop-distance 7)
+(defconst high-priority-lumber-drop-distance 4)
 
-(defconst goal-extended-dark-age 0)
-(defconst goal-minimal-farming 1)
-(defconst goal-lumber-camp-strictness 2)
-(defconst goal-food-located 3)
+(defconst goal-hit-feudal-time 1)
+(defconst goal-build-farms 2)
+(defconst goal-deprioritize-lumber-camps 3)
+(defconst goal-locate-food 4)
+(defconst goal-locate-boars 5)
+(defconst goal-build-first-mill 6)
+(defconst goal-build-first-lumber-camp 7)
+(defconst goal-build-first-house 8)
+(defconst goal-locate-big-sheep-group 9)
+(defconst goal-resume-villager-training 10)
+(defconst goal-train-villagers 11)
 
-(defconst farm-count-minimal 4)
-(defconst timer-farm 1)
-(defconst farm-delay 25)
+(defconst not-started -1)
+(defconst complete 1)
+(defconst failed 2)
+(defconst active 3)
+(defconst inactive 4)
 
-(defconst timer-attack-cooldown 2)
 
+; Set initial active goals
+(defrule 
+    (true)
+    =>
+    
+    (set-goal goal-train-villagers active)
+    (set-goal goal-resume-villager-training inactive)
+    (set-goal goal-build-first-house active)
+    (disable-self)
+)
 
 ; Train villagers
 ; This happens when food is available, or when extended dark age has been detected
 (defrule
+    (goal goal-train-villagers active)
     (civilian-population < max-villagers)
     (current-age == dark-age)
+    (not (can-research feudal-age))
     (or 
-        (goal goal-extended-dark-age 1)
+        (goal goal-hit-feudal-time failed)
         (and 
             (population < minimum-dark-age-population)
             (can-train villager)
         )
-    ) =>
+    ) 
+    =>
 
     (train villager)
 )
 
+; Indicate a need to resume villager training
 (defrule
-    (civilian-population < max-villagers)
-    (current-age == feudal-age)
-    (can-train villager) =>
+    (goal goal-train-villagers active)
+    (goal goal-resume-villager-training inactive)
+    (up-pending-objects c: villager == 0)
+    (not (can-afford-unit villager))
+    =>
 
-    (train villager)
+    (chat-local-to-self "Activate villager training resumption goal")
+    (set-goal goal-resume-villager-training active)
 )
+
+; Deactivate resume villager training goal
+(defrule
+    (goal goal-resume-villager-training active)
+    (up-pending-objects c: villager > 0)
+    =>
+
+    (chat-local-to-self "Deactivate villager training resumption goal")
+    (set-goal goal-resume-villager-training inactive)
+)
+
+; Return food while trying to resume villager training, particularly from boars
+(defrule
+    (goal goal-resume-villager-training active)
+    =>
+
+    (chat-local-to-self "Forcing food drop from boars")
+    (up-drop-resources food > 10)
+)
+
+; Complete first mill goal
+(defrule
+    (building-type-count mill >= 1)
+    =>
+
+    (set-goal goal-build-first-mill complete)
+    (disable-self)
+)
+
+
+; Build a lumber camp after mill
+(defrule
+    (goal goal-build-first-mill complete) 
+    =>
+
+    (set-goal goal-build-first-lumber-camp active)
+    (disable-self)
+)
+
+
+; Build first lumber camp
+(defrule
+    (goal goal-build-first-lumber-camp active)
+    (can-build lumber-camp)
+    =>
+
+    (build lumber-camp)
+    (disable-self)
+)
+
+
+; Complete build first lumber camp
+(defrule
+    (building-type-count lumber-camp > 0)
+    =>
+
+    (set-goal goal-build-first-lumber-camp complete)
+    (set-goal goal-deprioritize-lumber-camps active)
+)
+
+
+; Begin building lumber camps only if really really needed
+(defrule
+    (goal goal-deprioritize-lumber-camps active) 
+    (can-build lumber-camp)
+    (dropsite-min-distance wood > low-priority-lumber-drop-distance) 
+    =>
+
+    (build lumber-camp)
+)
+
 
 ; Start building farms in extended dark age
 (defrule
-    (goal goal-extended-dark-age 1) =>
-        (set-goal goal-minimal-farming 1)
-        (enable-timer timer-farm 1)
+    (goal goal-hit-feudal-time failed)
+    (or 
+        (building-type-count lumber-camp == 1)
+        (up-pending-objects c: lumber-camp >= 1)
+    )
+     =>
+
+    (set-goal goal-build-farms active)
+    (disable-self)
 )
 
-; Farm during extended dark age
+; Force more hunting for extended dark age
 (defrule
-    (timer-triggered timer-farm)
-    (goal goal-minimal-farming 1)
-    (building-type-count farm < farm-count-minimal) =>
-        (build farm)
-        (disable-timer timer-farm)
-        (enable-timer timer-farm farm-delay)
+    (goal goal-hit-feudal-time failed)
+    =>
+
+    (set-strategic-number sn-minimum-number-hunters 2)
+    (set-strategic-number sn-minimum-boar-hunt-group-size 4)
+    (disable-self)
+)
+
+; Last-ditch effort to avoid extended dark age
+(defrule
+    (goal goal-hit-feudal-time failed)
+    (population >= extended-dark-age-warning)
+    =>
+
+    (chat-local-to-self "Attempting late feudal avoidance")
+    (up-drop-resources food c: 4)
+    (disable-self)
+)
+
+; Allow more mill construction in extended dark age
+(defrule
+    (goal goal-hit-feudal-time failed)
+    (can-build mill)
+    (up-pending-objects c: mill == 0)
+    (dropsite-min-distance food > 4)
+    (or
+        (dropsite-min-distance food < 25)
+        (dropsite-min-distance deer-hunting < 25)
+    )
+    =>
+
+    (build mill)
+)
+
+
+; Stop queueing villagers in extended dark age
+(defrule
+    (goal goal-hit-feudal-time failed)
+    =>
+
+    (set-strategic-number sn-enable-training-queue 0)
+    (disable-self)
+)
+
+; Build farms
+(defrule
+    (goal goal-build-farms active) 
+    (idle-farm-count == 0)
+    (can-build farm)
+    (wood-amount > 90)
+    (up-pending-objects c: farm <= 1)
+    =>
+
+    (build farm)
 )
 
 ; Detect extended dark age
 (defrule
+    (current-age == dark-age)
+    (not (can-research feudal-age))
+    (not (up-research-status c: feudal-age >= research-pending))
     (or
-        (food-amount <= extended-dark-age-food-threshold)
         (and
-            (dropsite-min-distance food > 5)
-            (not (can-afford-research feudal-age))
+            (food-amount <= extended-dark-age-early-food-threshold)
+            (population >= extended-dark-age-early-warning)
+        )
+        (or 
+            (and
+                (food-amount <= extended-dark-age-food-threshold)
+                (population == extended-dark-age-warning)
+            )
+            (population >= extended-dark-age-pop-threshold)
         )
     )
-    (not (up-research-status c: feudal-age >= research-pending))
-    (current-age == dark-age)
-    (population == extended-dark-age-warning) =>
-        (set-goal goal-extended-dark-age 1)
-        (chat-local-to-self "Detected extended dark age")
-        (build house)
-        (disable-self)
+    =>
+
+    (set-goal goal-hit-feudal-time failed)
+    (chat-local-to-self "Detected extended dark age")
+    (build house)
+    (disable-self)
 )
 
-
-; Find food immediately after house
+; Complete first house goal
 (defrule
-    (building-type-count house > 0) =>
-        (up-assign-builders c: house c: 1)
-        (disable-self)
+    (building-type-count house > 0)
+    =>
+
+    (set-goal goal-build-first-house complete)
+    (up-assign-builders c: house c: 1)
+    (disable-self)
 )
 
-; Stop exploring once sheep are found
+; Find sheep after first house is built
 (defrule
-    (unit-type-count sheep >= 3) =>
-        (set-strategic-number sn-number-explore-groups 2)
-        (set-strategic-number sn-total-number-explorers 2)
-        (set-strategic-number sn-minimum-civilian-explorers 0)
-        (set-strategic-number sn-cap-civilian-explorers 0)
-        (set-strategic-number sn-percent-civilian-gatherers 100)
-        (set-strategic-number sn-food-gatherer-percentage 100)
-        (disable-self)
+    (goal goal-build-first-house complete)
+    =>
+
+    (set-goal goal-locate-big-sheep-group active)
+    (disable-self)
+)
+
+; Complete find sheep goal
+(defrule
+    (unit-type-count sheep >= 3) 
+    =>
+
+    (set-goal goal-locate-big-sheep-group complete)
+    (disable-self)
+)
+
+; Stop exploring with villagers once sheep are found
+(defrule
+    (goal goal-locate-big-sheep-group complete)
+    =>
+
+    (set-strategic-number sn-number-explore-groups 2)
+    (set-strategic-number sn-total-number-explorers 2)
+    (set-strategic-number sn-minimum-civilian-explorers 0)
+    (set-strategic-number sn-cap-civilian-explorers 0)
+    (set-strategic-number sn-percent-civilian-gatherers 100)
+    (set-strategic-number sn-food-gatherer-percentage 100)
+    (disable-self)
 )
 
 ; Build houses in the feudal age
@@ -107,8 +292,10 @@
     (current-age == feudal-age)
     (population-headroom > 0)
     (housing-headroom <= 2)
-    (up-pending-objects c: house == 0) =>
-        (build house)
+    (up-pending-objects c: house == 0)
+    =>
+
+    (build house)
 )
 
 ; Build houses until Feudal threshold or extended dark age
@@ -119,18 +306,21 @@
     (up-pending-objects c: house == 0)
     (or 
         (building-type-count house < 4 )
-        (goal goal-extended-dark-age 1)
+        (goal goal-hit-feudal-time failed)
     )
-         =>
-        (build house)
+    =>
+
+    (build house)
 )
 
 
 ; Build first house with multiple villagers
 (defrule
-    (true) => 
-        (up-assign-builders c: house c: 3)
-        (disable-self)
+    (goal goal-build-first-house active) 
+    => 
+
+    (up-assign-builders c: house c: 3)
+    (disable-self)
 )
 
 
@@ -151,9 +341,10 @@
             )
         )
     )
-     =>
-        (research ri-loom)
-        (disable-self)
+    =>
+
+    (research ri-loom)
+    (disable-self)
 )
 
 
@@ -167,210 +358,112 @@
         (dropsite-min-distance food > 3)
     )
     =>
-        (build mill)
-)
 
+    (build mill)
+)
 
 ; Start wood cutting when needed
 (defrule
-    (wood-amount <= low-wood-amount) =>
-        (set-strategic-number sn-maximum-wood-drop-distance 10)
-        (set-strategic-number sn-wood-gatherer-percentage 15)
-        (disable-self)
+    (wood-amount <= low-wood-amount)
+    =>
+
+    (set-strategic-number sn-maximum-wood-drop-distance 10)
+    (set-strategic-number sn-wood-gatherer-percentage 18)
+    (disable-self)
 )
-
-
-; Build a lumber camp after mill
-(defrule
-    (building-type-count mill >= 1)
-    (wood-amount >= 120) =>
-        (build lumber-camp)
-        (set-goal goal-lumber-camp-strictness 1)
-        (disable-self)
-)
-
-
-; Begin building lumber mills only if really really needed
-(defrule
-    (goal goal-lumber-camp-strictness 1) 
-    (can-build lumber-camp)
-    (dropsite-min-distance wood > low-priority-lumber-camp-drop-distance) =>
-        (build lumber-camp)
-)
-
 
 ; Go to Feudal Age
 (defrule
     (population >= minimum-dark-age-population)
     (can-research feudal-age)
     (can-afford-research feudal-age)
-    (current-age == dark-age) =>
-        (research feudal-age)
-        (set-goal goal-extended-dark-age 0)
-)
-
-
-(defrule
-    (current-age == feudal-age)
-    (housing-headroom < 10)
-    (population-headroom > 0)
+    (current-age == dark-age) 
     =>
-    (up-assign-builders c: house c: 2)
-    (build house)
+
+    (research feudal-age)
+    (set-goal goal-hit-feudal-time inactive)
 )
 
 
+; Found at least one boar
 (defrule
-    (current-age == feudal-age)
-    (building-type-count barracks >= 1) =>
-        (research ri-man-at-arms)      
+    (dropsite-min-distance live-boar <= hunting-distance)
+    =>
+
+    (set-goal goal-locate-boars complete)
+    (disable-self)
 )
 
-
+; Enable boar hunting when found
 (defrule 
-    (current-age == feudal-age)
-    (building-type-count farm < 15)
-    (wood-amount > 100) =>
-        (build farm)
+    (goal goal-locate-boars complete)
+    (game-time > 90)
+    =>
+
+    (set-strategic-number sn-enable-boar-hunting 2)
 )
 
-
-(defrule 
-    (current-age == feudal-age)
-    (wood-amount > 100)
-    (building-type-count barracks >= 2)
-    (building-type-count farm < 30) =>
-        (build farm)
-)
-
-
-(defrule 
-    (current-age == feudal-age)
-    (building-type-count barracks >= 4)
-    (wood-amount > 100)
-    (building-type-count farm < 45) =>
-        (build farm)
-)
-
-
-(defrule 
-    (current-age == feudal-age)
-    (building-type-count barracks >= 6)
-    (building-type-count farm < 60) =>
-        (build farm)
-)
-
-
-
+; Force boar hunting if it hasn't started slightly later
 (defrule
-    (current-age == feudal-age)
-    (dropsite-min-distance food > 5) => 
-        (set-strategic-number sn-preferred-mill-placement 0)
-        (build mill)
+    (goal goal-locate-boars complete)
+    (game-time > 180)
+    =>
+
+    (set-strategic-number sn-minimum-number-hunters 1)
+    (set-strategic-number sn-minimum-boar-hunt-group-size 4)
 )
 
-(defrule 
-    (current-age == feudal-age)
-    (building-type-count blacksmith == 0)
-    (up-pending-objects c: blacksmith == 0)
-    (wood-amount > 250) =>
-        (build blacksmith)
-)
-
+; Start villager timer if only one in queue and another can't be afforded
 (defrule
-    (can-research ri-forging) =>
-        (research ri-forging)
+    (up-pending-objects c: villager == 1)
+    (not (can-afford-unit villager))
+    (up-timer-status timer-villager-almost-done == timer-disabled)
+    =>
+
+    (enable-timer timer-villager-almost-done villager-almost-done-time)
+    (chat-local-to-self "Enabling villager timer")
 )
 
+; Stop timer if another villager can be trained or is queued
 (defrule
-    (can-research ri-fletching) =>
-        (research ri-fletching)
-)
-
-(defrule
-    (can-research ri-scale-mail) =>
-        (research ri-scale-mail)
-)
-
-(defrule 
-    (current-age == feudal-age)
-    (dropsite-min-distance gold > 3) =>
-        (build mining-camp)
-        (set-strategic-number sn-gold-gatherer-percentage 15)
-)
-
-
-(defrule 
-    (can-train man-at-arms) =>
-        (train militiaman-line)
-)
-
-(defrule
-    (military-population > 10)
-    (game-time > 1200)
     (or
-        (timer-triggered timer-attack-cooldown)
-        (up-timer-status timer-attack-cooldown == timer-disabled)
+        (up-pending-objects c: villager > 1)
+        (can-afford-unit villager)
+    )
+    (up-timer-status timer-villager-almost-done == timer-running)
+    =>
+
+    (disable-timer timer-villager-almost-done)
+    (chat-local-to-self "Disabling villager timer")
+)
+
+; Return food if needed for a villager soon
+(defrule
+    (up-pending-objects c: villager == 1)
+    (not (can-afford-unit villager))
+    (timer-triggered timer-villager-almost-done)
+    =>
+
+    (chat-local-to-self "Forcing food drop")
+    (disable-timer timer-villager-almost-done)
+    (up-drop-resources food c: 5)
+)
+
+
+; Allow deer when initial boars are used up or not found
+(defrule
+    (or
+        (game-time >= 300)
+        (and
+            (or 
+                (dropsite-min-distance live-boar > hunting-distance)
+                (dropsite-min-distance live-boar == -1)
+            )
+            (goal goal-locate-boars complete)
+        )
     )
     =>
-        (disable-timer timer-attack-cooldown)
-        (enable-timer timer-attack-cooldown 60)
-        (attack-now)
-)
 
-(defrule 
-    (wood-amount > 275)
-    (current-age == feudal-age)
-    (game-time > 1200) =>
-        (build barracks)
-)
-
-
-(defrule 
-    (can-research ri-double-bit-axe) =>
-        (research ri-double-bit-axe)
-        (disable-self)
-)
-
-
-(defrule 
-    (can-research ri-wheel-barrow) =>
-        (research ri-wheel-barrow)
-        (disable-self)
-)
-
-
-(defrule 
-    (can-research ri-horse-collar) =>
-        (research ri-horse-collar)
-        (disable-self)
-)
-
-
-(defrule
-    (civilian-population > 40) =>
-        (set-strategic-number sn-wood-gatherer-percentage 30)
-        (set-strategic-number sn-food-gatherer-percentage 45)
-        (set-strategic-number sn-gold-gatherer-percentage 25)
-)
-
-(defrule
-    (civilian-population > 80) =>
-        (set-strategic-number sn-wood-gatherer-percentage 30)
-        (set-strategic-number sn-food-gatherer-percentage 50)
-        (set-strategic-number sn-gold-gatherer-percentage 20)
-)
-
-(defrule
-    (civilian-population > 40)
-    (building-type-count mill < 3) 
-    =>
-    (build mill)
-)
-
-(defrule
-    (civilian-population > 80)
-    (building-type-count mill < 4) 
-    =>
-    (build mill)
+    (set-strategic-number sn-enable-boar-hunting 1)
+    (disable-self)
 )
