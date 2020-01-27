@@ -597,14 +597,6 @@
     (set-goal goal-build-mill-by-deer active)
 )
 
-; ; Continuously try to hunt deer
-; (defrule
-;     (goal goal-hunt-deer active)
-;     =>
-
-;     (up-request-hunters c: 5)
-; )
-
 ; Mark deer hunting complete when no deer remain
 (defrule
     (or
