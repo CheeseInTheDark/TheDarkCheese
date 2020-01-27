@@ -3,8 +3,9 @@
 
 (defrule
     (true) =>
+        (set-strategic-number sn-home-exploration-time 510)
         (set-strategic-number sn-attack-intelligence 1)
-        (set-strategic-number sn-camp-max-distance 30)
+        (set-strategic-number sn-camp-max-distance 12)
         (set-strategic-number sn-mill-max-distance 30)
         (set-strategic-number sn-ignore-attack-group-under-attack 1)
         (set-strategic-number sn-number-attack-groups 3)
@@ -15,7 +16,7 @@
         (set-strategic-number sn-consecutive-idle-unit-limit 0)
         (set-strategic-number sn-maximum-town-size 25)
         (set-strategic-number sn-total-number-explorers 1)
-        (set-strategic-number sn-retask-gather-amount 10)
+        (set-strategic-number sn-retask-gather-amount 20)
         (disable-self)
 )
 
@@ -32,7 +33,7 @@
 
         (set-strategic-number sn-maximum-wood-drop-distance 0)
         (set-strategic-number sn-maximum-hunt-drop-distance hunting-distance)
-        (set-strategic-number sn-maximum-food-drop-distance 15)
+        (set-strategic-number sn-maximum-food-drop-distance 30)
         (set-strategic-number sn-maximum-gold-drop-distance 4)
         (set-strategic-number sn-maximum-stone-drop-distance 4)
 
@@ -48,5 +49,7 @@
 
         (set-strategic-number sn-enable-training-queue 1)
         (set-strategic-number sn-enable-boar-hunting 0)
+        (set-strategic-number sn-minimum-boar-hunt-group-size 1)
+        (set-strategic-number sn-minimum-boar-lure-group-size 0)
         (disable-self)
 )

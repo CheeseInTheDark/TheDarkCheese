@@ -1,16 +1,22 @@
 (load "TheDarkCheese/starting strategic numbers")
 (load "TheDarkCheese/user patch constants")
 
+(defconst extended-dark-age-time-threshold 750)
 (defconst extended-dark-age-food-threshold 350)
 (defconst extended-dark-age-early-food-threshold 220)
 (defconst extended-dark-age-pop-threshold 25)
 (defconst extended-dark-age-warning 24)
-(defconst minimum-dark-age-population 23)
 (defconst extended-dark-age-early-warning 21)
+(defconst minimum-dark-age-population 23)
 
 (defconst villager-almost-done-time 20)
 (defconst timer-villager-almost-done 1)
 (defconst max-villagers 200)
+
+(defconst deer-hunting-distance 6)
+(defconst early-farm-limit 5)
+
+(defconst no-boars-left 65535)
 
 (defconst low-wood-amount 30)
 (defconst low-priority-lumber-drop-distance 7)
@@ -27,13 +33,20 @@
 (defconst goal-locate-big-sheep-group 9)
 (defconst goal-resume-villager-training 10)
 (defconst goal-train-villagers 11)
+(defconst goal-hunt-boar 12)
+(defconst goal-hunt-deer 13)
+(defconst goal-build-mill-by-deer 15)
+(defconst goal-build-early-farms 16)
+(defconst goal-kill-lured-boar 17)
+(defconst goal-lure-new-boar 18)
+(defconst goal-consume-current-boar 19)
+(defconst goal-start-boar-lure 20)
 
 (defconst not-started -1)
 (defconst complete 1)
 (defconst failed 2)
 (defconst active 3)
 (defconst inactive 4)
-
 
 ; Set initial active goals
 (defrule 
@@ -43,6 +56,10 @@
     (set-goal goal-train-villagers active)
     (set-goal goal-resume-villager-training inactive)
     (set-goal goal-build-first-house active)
+    (set-goal goal-locate-boars active)
+    (set-goal goal-consume-current-boar inactive)
+    (set-goal goal-lure-new-boar inactive)
+    (set-goal goal-kill-lured-boar inactive)
     (disable-self)
 )
 
@@ -73,26 +90,26 @@
     (not (can-afford-unit villager))
     =>
 
-    (chat-local-to-self "Activate villager training resumption goal")
     (set-goal goal-resume-villager-training active)
 )
 
 ; Deactivate resume villager training goal
 (defrule
     (goal goal-resume-villager-training active)
-    (up-pending-objects c: villager > 0)
+    (or
+        (up-pending-objects c: villager > 0)
+        (up-research-status c: feudal-age >= research-pending)
+    )
     =>
 
-    (chat-local-to-self "Deactivate villager training resumption goal")
     (set-goal goal-resume-villager-training inactive)
 )
 
-; Return food while trying to resume villager training, particularly from boars
+; Return food while trying to resume villager training, particularly from hunting
 (defrule
     (goal goal-resume-villager-training active)
     =>
 
-    (chat-local-to-self "Forcing food drop from boars")
     (up-drop-resources food > 10)
 )
 
@@ -148,63 +165,50 @@
 )
 
 
-; Start building farms in extended dark age
+; Start building farms when not competing with mills for wood
 (defrule
-    (goal goal-hit-feudal-time failed)
-    (or 
-        (building-type-count lumber-camp == 1)
-        (up-pending-objects c: lumber-camp >= 1)
+    (or
+        (goal goal-hunt-deer complete)
+        (not (goal goal-build-mill-by-deer active))
     )
+    (goal goal-hunt-boar complete)
+    (goal goal-build-first-lumber-camp complete)
      =>
 
-    (set-goal goal-build-farms active)
+    (set-goal goal-build-early-farms active)
     (disable-self)
 )
 
-; Force more hunting for extended dark age
+; Stop building early farms
 (defrule
-    (goal goal-hit-feudal-time failed)
+    (goal goal-build-early-farms active)
+    (unit-type-count-total farm >= early-farm-limit)
     =>
 
-    (set-strategic-number sn-minimum-number-hunters 2)
-    (set-strategic-number sn-minimum-boar-hunt-group-size 4)
+    (set-goal goal-build-early-farms inactive)
     (disable-self)
 )
 
-; Last-ditch effort to avoid extended dark age
+; Determine if farms should be built
 (defrule
-    (goal goal-hit-feudal-time failed)
-    (population >= extended-dark-age-warning)
-    =>
-
-    (chat-local-to-self "Attempting late feudal avoidance")
-    (up-drop-resources food c: 4)
-    (disable-self)
-)
-
-; Allow more mill construction in extended dark age
-(defrule
-    (goal goal-hit-feudal-time failed)
-    (can-build mill)
-    (up-pending-objects c: mill == 0)
-    (dropsite-min-distance food > 4)
     (or
-        (dropsite-min-distance food < 25)
-        (dropsite-min-distance deer-hunting < 25)
+        (goal goal-build-early-farms active)
+        (goal goal-hunt-deer complete)
     )
     =>
 
-    (build mill)
+    (set-goal goal-build-farms active)
 )
 
-
-; Stop queueing villagers in extended dark age
+; Turn off farms
 (defrule
-    (goal goal-hit-feudal-time failed)
+    (nor
+        (goal goal-build-early-farms active)
+        (goal goal-hunt-deer complete)
+    )
     =>
 
-    (set-strategic-number sn-enable-training-queue 0)
-    (disable-self)
+    (set-goal goal-build-farms inactive)
 )
 
 ; Build farms
@@ -217,6 +221,25 @@
     =>
 
     (build farm)
+)
+
+; Last-ditch effort to avoid extended dark age
+(defrule
+    (goal goal-hit-feudal-time failed)
+    (population >= extended-dark-age-warning)
+    =>
+
+    (up-drop-resources food c: 10)
+    (disable-self)
+)
+
+; Stop queueing villagers when close to feudal threshold
+(defrule
+    (population >= minimum-dark-age-population)
+    =>
+
+    (set-strategic-number sn-enable-training-queue 0)
+    (disable-self)
 )
 
 ; Detect extended dark age
@@ -234,14 +257,16 @@
                 (food-amount <= extended-dark-age-food-threshold)
                 (population == extended-dark-age-warning)
             )
-            (population >= extended-dark-age-pop-threshold)
+            (or
+                (population >= extended-dark-age-pop-threshold)
+                (game-time > extended-dark-age-time-threshold)
+            )
         )
     )
     =>
 
     (set-goal goal-hit-feudal-time failed)
     (chat-local-to-self "Detected extended dark age")
-    (build house)
     (disable-self)
 )
 
@@ -313,7 +338,6 @@
     (build house)
 )
 
-
 ; Build first house with multiple villagers
 (defrule
     (goal goal-build-first-house active) 
@@ -322,7 +346,6 @@
     (up-assign-builders c: house c: 3)
     (disable-self)
 )
-
 
 ; Research loom if house stuck, food stuck, or population is 25 and can't research feudal
 (defrule
@@ -347,7 +370,6 @@
     (disable-self)
 )
 
-
 ; Build a mill when stuff is too far away or when low on sheep
 (defrule
     (building-type-count-total mill == 0)
@@ -360,6 +382,7 @@
     =>
 
     (build mill)
+    (disable-self)
 )
 
 ; Start wood cutting when needed
@@ -368,7 +391,8 @@
     =>
 
     (set-strategic-number sn-maximum-wood-drop-distance 10)
-    (set-strategic-number sn-wood-gatherer-percentage 18)
+    (set-strategic-number sn-wood-gatherer-percentage 20)
+    (set-strategic-number sn-food-gatherer-percentage 80)
     (disable-self)
 )
 
@@ -382,14 +406,17 @@
 
     (research feudal-age)
     (set-goal goal-hit-feudal-time inactive)
+    (disable-self)
 )
 
 
 ; Found at least one boar
 (defrule
+    (not (dropsite-min-distance live-boar == -1))
     (dropsite-min-distance live-boar <= hunting-distance)
     =>
 
+    (chat-local-to-self "Found boar")
     (set-goal goal-locate-boars complete)
     (disable-self)
 )
@@ -397,20 +424,79 @@
 ; Enable boar hunting when found
 (defrule 
     (goal goal-locate-boars complete)
-    (game-time > 90)
+    (game-time > 120)
     =>
 
     (set-strategic-number sn-enable-boar-hunting 2)
+    (disable-self)
 )
 
-; Force boar hunting if it hasn't started slightly later
+; Force boar hunting when population is high enough
 (defrule
     (goal goal-locate-boars complete)
-    (game-time > 180)
+    (population >= 11)
     =>
 
+    (set-goal goal-hunt-boar active)
+    (disable-self)
+)
+
+; Determine if new boar should be fetched
+(defrule
+    (goal goal-hunt-boar active)
+    (goal goal-consume-current-boar inactive)
+    (goal goal-lure-new-boar inactive)
+    =>
+
+    (set-goal goal-lure-new-boar active)
+    (set-goal goal-start-boar-lure active)
+)
+
+; Go get a boar if requested
+(defrule
+    (goal goal-lure-new-boar active)
+    (goal goal-start-boar-lure active)
+    =>
+
+    (chat-local-to-self "Initiating boar lure")
     (set-strategic-number sn-minimum-number-hunters 1)
-    (set-strategic-number sn-minimum-boar-hunt-group-size 4)
+    (set-goal goal-start-boar-lure inactive)
+)
+
+; Send more hunters when boar is close to the town center
+(defrule
+    (goal goal-lure-new-boar active)
+    (goal goal-kill-lured-boar inactive)
+    (dropsite-min-distance live-boar <= 6)
+    =>
+
+    (chat-local-to-self "Calling for more boar killers")
+    (set-goal goal-kill-lured-boar active)
+    (set-strategic-number sn-minimum-number-hunters 6)
+)
+
+; Finish luring portion of hunting
+(defrule
+    (goal goal-lure-new-boar active)
+    (goal goal-kill-lured-boar active)
+    (up-remaining-boar-amount > 0)
+    =>
+
+    (chat-local-to-self "Confirmed boar kill")
+    (set-goal goal-consume-current-boar active)
+    (set-goal goal-lure-new-boar inactive)
+    (set-goal goal-kill-lured-boar inactive)
+)
+
+; Detect when ready for new boar
+(defrule
+    (goal goal-consume-current-boar active)
+    (not (up-remaining-boar-amount >= 0))
+    =>
+
+    (chat-local-to-self "Boar consumption complete")
+    (set-goal goal-consume-current-boar inactive)
+    (set-strategic-number sn-minimum-number-hunters 0)
 )
 
 ; Start villager timer if only one in queue and another can't be afforded
@@ -421,7 +507,6 @@
     =>
 
     (enable-timer timer-villager-almost-done villager-almost-done-time)
-    (chat-local-to-self "Enabling villager timer")
 )
 
 ; Stop timer if another villager can be trained or is queued
@@ -434,7 +519,6 @@
     =>
 
     (disable-timer timer-villager-almost-done)
-    (chat-local-to-self "Disabling villager timer")
 )
 
 ; Return food if needed for a villager soon
@@ -444,26 +528,114 @@
     (timer-triggered timer-villager-almost-done)
     =>
 
-    (chat-local-to-self "Forcing food drop")
     (disable-timer timer-villager-almost-done)
     (up-drop-resources food c: 5)
 )
 
+; Give up on boars after a while
+(defrule
+    (not (goal goal-locate-boars complete))
+    (game-time >= 510)
+    =>
 
-; Allow deer when initial boars are used up or not found
+    (chat-local-to-self "Locate boars failed")
+    (set-goal goal-locate-boars failed)
+    (disable-self)
+)
+
+; Declare boar hunting complete when boars are used up or not found
 (defrule
     (or
-        (game-time >= 300)
-        (and
-            (or 
-                (dropsite-min-distance live-boar > hunting-distance)
-                (dropsite-min-distance live-boar == -1)
-            )
-            (goal goal-locate-boars complete)
-        )
+        (dropsite-min-distance boar-hunting > hunting-distance)
+        (dropsite-min-distance boar-hunting == -1)
+    )
+    (or
+        (goal goal-locate-boars complete)
+        (goal goal-locate-boars failed)
     )
     =>
 
-    (set-strategic-number sn-enable-boar-hunting 1)
+    (chat-local-to-self "Boar hunting complete")
+    (set-goal goal-hunt-boar complete)
     (disable-self)
+)
+
+; Hunt deer when boars are exhausted
+(defrule
+    (or
+        (goal goal-hunt-boar complete)
+        (goal goal-locate-boars failed)
+    )
+    =>
+
+    (chat-local-to-self "Activating deer hunting")
+    (set-goal goal-hunt-deer active)
+    (disable-self)
+)
+
+; Allow deer hunting
+(defrule
+    (goal goal-hunt-deer active)
+    =>
+
+    (chat-local-to-self "Allowing deer hunting")
+    (set-strategic-number sn-minimum-number-hunters 10)
+    (set-strategic-number sn-retask-gather-amount 140)
+    (disable-self)
+)
+
+; Build mill by deer if needed
+(defrule
+    (goal goal-hunt-deer active)
+    (or
+        (goal goal-build-mill-by-deer not-started)
+        (goal goal-build-mill-by-deer inactive)
+    )
+    (dropsite-min-distance deer-hunting > deer-hunting-distance)
+    =>
+
+    (set-goal goal-build-mill-by-deer active)
+)
+
+; ; Continuously try to hunt deer
+; (defrule
+;     (goal goal-hunt-deer active)
+;     =>
+
+;     (up-request-hunters c: 5)
+; )
+
+; Mark deer hunting complete when no deer remain
+(defrule
+    (or
+        (dropsite-min-distance deer-hunting > hunting-distance)
+        (dropsite-min-distance deer-hunting == -1)
+    )
+    (goal goal-hunt-deer active)
+    =>
+
+    (set-goal goal-hunt-deer complete)
+    (chat-local-to-self "Completed deer hunting")
+    (disable-self)
+)
+
+; Allow more mill construction for hunting
+(defrule
+    (goal goal-build-mill-by-deer active)
+    (can-build mill)
+    (up-pending-objects c: mill == 0)
+    =>
+
+    (set-strategic-number sn-preferred-mill-placement 1)
+    (build mill)
+)
+
+; Deactivate build mill by deer
+(defrule
+    (goal goal-build-mill-by-deer active)
+    (dropsite-min-distance deer-hunting <= deer-hunting-distance)
+    =>
+
+    (set-strategic-number sn-enable-boar-hunting 1)
+    (set-goal goal-build-mill-by-deer inactive)
 )
