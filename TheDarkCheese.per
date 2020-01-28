@@ -2,21 +2,23 @@
 (load "TheDarkCheese/user patch constants")
 
 (defconst extended-dark-age-time-threshold 750)
-(defconst extended-dark-age-food-threshold 350)
+(defconst extended-dark-age-food-threshold 400)
 (defconst extended-dark-age-early-food-threshold 220)
 (defconst extended-dark-age-pop-threshold 25)
 (defconst extended-dark-age-warning 24)
 (defconst extended-dark-age-early-warning 21)
 (defconst minimum-dark-age-population 23)
 
-(defconst villager-almost-done-time 20)
-(defconst timer-villager-almost-done 1)
+
+
+(defconst dark-age-town-center-task-duration 20)
+(defconst timer-town-center-free-soon 1)
 (defconst max-villagers 200)
 
 (defconst deer-hunting-distance 6)
 (defconst early-farm-limit 5)
 
-(defconst no-boars-left 65535)
+(defconst sheep-search-time 400)
 
 (defconst low-wood-amount 30)
 (defconst low-priority-lumber-drop-distance 7)
@@ -41,6 +43,7 @@
 (defconst goal-lure-new-boar 18)
 (defconst goal-consume-current-boar 19)
 (defconst goal-start-boar-lure 20)
+(defconst goal-locate-any-sheep 21)
 
 (defconst not-started -1)
 (defconst complete 1)
@@ -69,14 +72,21 @@
     (goal goal-train-villagers active)
     (civilian-population < max-villagers)
     (current-age == dark-age)
-    (not (can-research feudal-age))
-    (or 
-        (goal goal-hit-feudal-time failed)
-        (and 
-            (population < minimum-dark-age-population)
-            (can-train villager)
+    (not
+        (and
+            (population >= minimum-dark-age-population)
+            (can-research feudal-age)
+        ) 
+    )
+    (not
+        (and
+            (up-research-status c: ri-loom < research-pending)
+            (and
+                (population == extended-dark-age-pop-threshold)
+                (can-research ri-loom)
+            )
         )
-    ) 
+    )
     =>
 
     (train villager)
@@ -227,6 +237,7 @@
 (defrule
     (goal goal-hit-feudal-time failed)
     (population >= extended-dark-age-warning)
+    (timer-triggered timer-town-center-free-soon)
     =>
 
     (up-drop-resources food c: 10)
@@ -285,20 +296,48 @@
     (goal goal-build-first-house complete)
     =>
 
+    (set-goal goal-locate-any-sheep active)
     (set-goal goal-locate-big-sheep-group active)
     (disable-self)
 )
 
-; Complete find sheep goal
+; Complete find big sheep group goal
 (defrule
-    (unit-type-count sheep >= 3) 
+    (or
+        (unit-type-count sheep >= 3) 
+        (game-time >= sheep-search-time)
+    )
     =>
 
+    (set-goal goal-locate-any-sheep complete)
     (set-goal goal-locate-big-sheep-group complete)
     (disable-self)
 )
 
-; Stop exploring with villagers once sheep are found
+; Complete find any sheep goal
+(defrule
+    (unit-type-count sheep >= 1)
+    =>
+
+    (set-goal goal-locate-any-sheep complete)
+    (disable-self)
+)
+
+; Reduce number of villager explorers once some sheep are available
+(defrule
+    (goal goal-locate-any-sheep complete)
+    =>
+
+    (set-strategic-number sn-number-explore-groups 2)
+    (set-strategic-number sn-total-number-explorers 2)
+    (set-strategic-number sn-minimum-civilian-explorers 1)
+    (set-strategic-number sn-cap-civilian-explorers 1)
+    (set-strategic-number sn-percent-civilian-gatherers 100)
+    (set-strategic-number sn-food-gatherer-percentage 100)
+    (disable-self)
+)
+
+; Stop exploring with villagers once many sheep are found
 (defrule
     (goal goal-locate-big-sheep-group complete)
     =>
@@ -350,6 +389,7 @@
 ; Research loom if house stuck, food stuck, or population is 25 and can't research feudal
 (defrule
     (can-research ri-loom)
+    (not (can-research feudal-age))
     (up-pending-objects c: villager == 0)
     (or
         (not (can-afford-unit villager))
@@ -366,6 +406,7 @@
     )
     =>
 
+    (enable-timer timer-town-center-free-soon dark-age-town-center-task-duration)
     (research ri-loom)
     (disable-self)
 )
@@ -400,7 +441,6 @@
 (defrule
     (population >= minimum-dark-age-population)
     (can-research feudal-age)
-    (can-afford-research feudal-age)
     (current-age == dark-age) 
     =>
 
@@ -408,7 +448,6 @@
     (set-goal goal-hit-feudal-time inactive)
     (disable-self)
 )
-
 
 ; Found at least one boar
 (defrule
@@ -499,14 +538,17 @@
     (set-strategic-number sn-minimum-number-hunters 0)
 )
 
-; Start villager timer if only one in queue and another can't be afforded
+; Start villager timer if only one in queue and another can't be afforded, or loom is being researched
 (defrule
-    (up-pending-objects c: villager == 1)
+    (or
+        (up-pending-objects c: villager == 1)
+        (up-research-status c: ri-loom == research-pending)
+    )
     (not (can-afford-unit villager))
-    (up-timer-status timer-villager-almost-done == timer-disabled)
+    (up-timer-status timer-town-center-free-soon == timer-disabled)
     =>
 
-    (enable-timer timer-villager-almost-done villager-almost-done-time)
+    (enable-timer timer-town-center-free-soon dark-age-town-center-task-duration)
 )
 
 ; Stop timer if another villager can be trained or is queued
@@ -515,20 +557,20 @@
         (up-pending-objects c: villager > 1)
         (can-afford-unit villager)
     )
-    (up-timer-status timer-villager-almost-done == timer-running)
+    (up-timer-status timer-town-center-free-soon == timer-running)
     =>
 
-    (disable-timer timer-villager-almost-done)
+    (disable-timer timer-town-center-free-soon)
 )
 
 ; Return food if needed for a villager soon
 (defrule
     (up-pending-objects c: villager == 1)
     (not (can-afford-unit villager))
-    (timer-triggered timer-villager-almost-done)
+    (timer-triggered timer-town-center-free-soon)
     =>
 
-    (disable-timer timer-villager-almost-done)
+    (disable-timer timer-town-center-free-soon)
     (up-drop-resources food c: 5)
 )
 
