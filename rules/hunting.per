@@ -161,6 +161,7 @@
     (chat-local-to-self "Allowing deer hunting")
     (set-strategic-number sn-minimum-number-hunters 10)
     (set-strategic-number sn-retask-gather-amount 140)
+    (set-strategic-number sn-enable-boar-hunting 1)
     (disable-self)
 )
 
@@ -187,6 +188,7 @@
     =>
 
     (set-goal goal-hunt-deer complete)
+    (set-goal goal-build-mill-by-deer inactive)
     (chat-local-to-self "Completed deer hunting")
     (disable-self)
 )
@@ -208,6 +210,5 @@
     (dropsite-min-distance deer-hunting <= deer-hunting-distance)
     =>
 
-    (set-strategic-number sn-enable-boar-hunting 1)
     (set-goal goal-build-mill-by-deer inactive)
 )
