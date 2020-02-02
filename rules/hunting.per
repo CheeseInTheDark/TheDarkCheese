@@ -1,0 +1,213 @@
+; Found at least one boar
+(defrule
+    (not (dropsite-min-distance live-boar == -1))
+    (dropsite-min-distance live-boar <= hunting-distance)
+    =>
+
+    (chat-local-to-self "Found boar")
+    (set-goal goal-locate-boars complete)
+    (disable-self)
+)
+
+; Enable boar hunting when found
+(defrule 
+    (goal goal-locate-boars complete)
+    (game-time > 120)
+    =>
+
+    (set-strategic-number sn-enable-boar-hunting 2)
+    (disable-self)
+)
+
+; Force boar hunting when population is high enough
+(defrule
+    (goal goal-locate-boars complete)
+    (population >= 11)
+    =>
+
+    (set-goal goal-hunt-boar active)
+    (disable-self)
+)
+
+; Determine if new boar should be fetched
+(defrule
+    (goal goal-hunt-boar active)
+    (goal goal-consume-current-boar inactive)
+    (goal goal-lure-new-boar inactive)
+    =>
+
+    (set-goal goal-lure-new-boar active)
+    (set-goal goal-start-boar-lure active)
+)
+
+; Go get a boar if requested
+(defrule
+    (goal goal-lure-new-boar active)
+    (goal goal-start-boar-lure active)
+    =>
+
+    (chat-local-to-self "Initiating boar lure")
+    (set-strategic-number sn-minimum-number-hunters 1)
+    (set-goal goal-start-boar-lure inactive)
+)
+
+; Send more hunters when boar is close to the town center or mill
+(defrule
+    (goal goal-lure-new-boar active)
+    (goal goal-kill-lured-boar inactive)
+    (dropsite-min-distance live-boar <= 6)
+    (dropsite-min-distance live-boar > -1)
+    =>
+
+    (chat-local-to-self "Calling for more boar killers")
+    (set-goal goal-kill-lured-boar active)
+    (set-strategic-number sn-minimum-number-hunters 6)
+)
+
+; Finish luring portion of hunting
+(defrule
+    (goal goal-lure-new-boar active)
+    (goal goal-kill-lured-boar active)
+    (up-remaining-boar-amount > 0)
+    =>
+
+    (chat-local-to-self "Confirmed boar kill")
+    (set-goal goal-consume-current-boar active)
+    (set-goal goal-lure-new-boar inactive)
+    (set-goal goal-kill-lured-boar inactive)
+)
+
+; Detect when ready for new boar
+(defrule
+    (goal goal-consume-current-boar active)
+    (not (up-remaining-boar-amount >= 0))
+    =>
+
+    (chat-local-to-self "Boar consumption complete")
+    (set-goal goal-consume-current-boar inactive)
+    (set-strategic-number sn-minimum-number-hunters 0)
+) 
+
+; Give up on boars after a while
+(defrule
+    (not (goal goal-locate-boars complete))
+    (game-time >= 510)
+    =>
+
+    (chat-local-to-self "Locate boars failed")
+    (set-goal goal-locate-boars failed)
+    (disable-self)
+)
+
+; Prevent boar wanderings from false declarations of boar completion
+(defrule
+    (or
+        (dropsite-min-distance boar-hunting > hunting-distance)
+        (dropsite-min-distance boar-hunting == -1)
+    )
+    (goal goal-locate-boars complete)
+    (up-timer-status timer-boar-exhaustion == timer-disabled)
+    =>
+
+    (enable-timer timer-boar-exhaustion boar-exhaustion-debounce-time)
+)
+
+; Declare boar hunting complete when boars are used up or not found
+(defrule
+    (or
+        (dropsite-min-distance boar-hunting > hunting-distance)
+        (dropsite-min-distance boar-hunting == -1)
+    )
+    (or
+        (and
+            (goal goal-locate-boars complete)
+            (timer-triggered timer-boar-exhaustion)
+        )
+        (goal goal-locate-boars failed)
+    )
+    =>
+
+    (chat-local-to-self "Boar hunting complete")
+    (set-goal goal-hunt-boar complete)
+    (disable-self)
+)
+
+; Reset boar timer
+(defrule
+    (timer-triggered timer-boar-exhaustion)
+    =>
+
+    (disable-timer timer-boar-exhaustion)
+)
+
+; Hunt deer when boars are exhausted
+(defrule
+    (or
+        (goal goal-hunt-boar complete)
+        (goal goal-locate-boars failed)
+    )
+    =>
+
+    (chat-local-to-self "Activating deer hunting")
+    (set-goal goal-hunt-deer active)
+    (disable-self)
+)
+
+; Allow deer hunting
+(defrule
+    (goal goal-hunt-deer active)
+    =>
+
+    (chat-local-to-self "Allowing deer hunting")
+    (set-strategic-number sn-minimum-number-hunters 10)
+    (set-strategic-number sn-retask-gather-amount 140)
+    (disable-self)
+)
+
+; Build mill by deer if needed
+(defrule
+    (goal goal-hunt-deer active)
+    (or
+        (goal goal-build-mill-by-deer not-started)
+        (goal goal-build-mill-by-deer inactive)
+    )
+    (dropsite-min-distance deer-hunting > deer-hunting-distance)
+    =>
+
+    (set-goal goal-build-mill-by-deer active)
+)
+
+; Mark deer hunting complete when no deer remain
+(defrule
+    (or
+        (dropsite-min-distance deer-hunting > hunting-distance)
+        (dropsite-min-distance deer-hunting == -1)
+    )
+    (goal goal-hunt-deer active)
+    =>
+
+    (set-goal goal-hunt-deer complete)
+    (chat-local-to-self "Completed deer hunting")
+    (disable-self)
+)
+
+; Allow more mill construction for hunting
+(defrule
+    (goal goal-build-mill-by-deer active)
+    (can-build mill)
+    (up-pending-objects c: mill == 0)
+    =>
+
+    (set-strategic-number sn-preferred-mill-placement 1)
+    (build mill)
+)
+
+; Deactivate build mill by deer
+(defrule
+    (goal goal-build-mill-by-deer active)
+    (dropsite-min-distance deer-hunting <= deer-hunting-distance)
+    =>
+
+    (set-strategic-number sn-enable-boar-hunting 1)
+    (set-goal goal-build-mill-by-deer inactive)
+)

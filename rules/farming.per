@@ -1,0 +1,57 @@
+; Start building farms when not competing with mills for wood
+(defrule
+    (or
+        (goal goal-hunt-deer complete)
+        (not (goal goal-build-mill-by-deer active))
+    )
+    (goal goal-hunt-boar complete)
+     =>
+
+    (set-goal goal-build-early-farms active)
+    (disable-self)
+)
+
+; Stop building early farms
+(defrule
+    (goal goal-build-early-farms active)
+    (unit-type-count-total farm >= early-farm-limit)
+    =>
+
+    (set-goal goal-build-early-farms inactive)
+    (disable-self)
+)
+
+; Turn on farms
+(defrule
+    (goal goal-build-first-lumber-camp complete)
+    (or
+        (goal goal-build-early-farms active)
+        (goal goal-hunt-deer complete)
+    )
+    =>
+
+    (set-goal goal-build-farms active)
+)
+
+; Turn off farms
+(defrule
+    (nor
+        (goal goal-build-early-farms active)
+        (goal goal-hunt-deer complete)
+    )
+    =>
+
+    (set-goal goal-build-farms inactive)
+)
+
+; Build farms
+(defrule
+    (goal goal-build-farms active) 
+    (idle-farm-count == 0)
+    (can-build farm)
+    (wood-amount > 90)
+    (up-pending-objects c: farm <= 1)
+    =>
+
+    (build farm)
+)

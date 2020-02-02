@@ -1,0 +1,70 @@
+; Last-ditch effort to avoid extended dark age
+(defrule
+    (goal goal-hit-feudal-time failed)
+    (population >= extended-dark-age-warning)
+    (timer-triggered timer-town-center-free-soon)
+    =>
+
+    (up-drop-resources food c: 10)
+    (disable-self)
+)
+
+; Stop queueing villagers when close to feudal threshold
+(defrule
+    (population >= minimum-dark-age-population)
+    =>
+
+    (set-strategic-number sn-enable-training-queue 0)
+    (disable-self)
+)
+
+; Detect extended dark age
+(defrule
+    (current-age == dark-age)
+    (not (can-research feudal-age))
+    (not (up-research-status c: feudal-age >= research-pending))
+    (or
+        (and
+            (food-amount <= extended-dark-age-early-food-threshold)
+            (population >= extended-dark-age-early-warning)
+        )
+        (or 
+            (and
+                (food-amount <= extended-dark-age-food-threshold)
+                (population == extended-dark-age-warning)
+            )
+            (or
+                (population >= extended-dark-age-pop-threshold)
+                (game-time > extended-dark-age-time-threshold)
+            )
+        )
+    )
+    =>
+
+    (set-goal goal-hit-feudal-time failed)
+    (chat-local-to-self "Detected extended dark age")
+    (disable-self)
+)
+
+; Start wood cutting when needed
+(defrule
+    (wood-amount <= low-wood-amount)
+    =>
+
+    (set-strategic-number sn-maximum-wood-drop-distance 10)
+    (set-strategic-number sn-wood-gatherer-percentage 20)
+    (set-strategic-number sn-food-gatherer-percentage 80)
+    (disable-self)
+)
+
+; Go to Feudal Age
+(defrule
+    (population >= minimum-dark-age-population)
+    (can-research feudal-age)
+    (current-age == dark-age) 
+    =>
+
+    (research feudal-age)
+    (set-goal goal-hit-feudal-time inactive)
+    (disable-self)
+)

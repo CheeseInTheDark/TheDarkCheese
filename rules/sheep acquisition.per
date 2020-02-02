@@ -1,0 +1,59 @@
+; Find sheep after first house is built
+(defrule
+    (goal goal-build-first-house complete)
+    =>
+
+    (set-goal goal-locate-any-sheep active)
+    (set-goal goal-locate-big-sheep-group active)
+    (disable-self)
+)
+
+; Complete find big sheep group goal
+(defrule
+    (or
+        (unit-type-count sheep >= 3) 
+        (game-time >= sheep-search-time)
+    )
+    =>
+
+    (set-goal goal-locate-any-sheep complete)
+    (set-goal goal-locate-big-sheep-group complete)
+    (disable-self)
+)
+
+; Complete find any sheep goal
+(defrule
+    (unit-type-count sheep >= 1)
+    =>
+
+    (set-goal goal-locate-any-sheep complete)
+    (disable-self)
+)
+
+; Reduce number of villager explorers once some sheep are available
+(defrule
+    (goal goal-locate-any-sheep complete)
+    =>
+
+    (set-strategic-number sn-number-explore-groups 2)
+    (set-strategic-number sn-total-number-explorers 2)
+    (set-strategic-number sn-minimum-civilian-explorers 1)
+    (set-strategic-number sn-cap-civilian-explorers 1)
+    (set-strategic-number sn-percent-civilian-gatherers 100)
+    (set-strategic-number sn-food-gatherer-percentage 100)
+    (disable-self)
+)
+
+; Stop exploring with villagers once many sheep are found
+(defrule
+    (goal goal-locate-big-sheep-group complete)
+    =>
+
+    (set-strategic-number sn-number-explore-groups 2)
+    (set-strategic-number sn-total-number-explorers 2)
+    (set-strategic-number sn-minimum-civilian-explorers 0)
+    (set-strategic-number sn-cap-civilian-explorers 0)
+    (set-strategic-number sn-percent-civilian-gatherers 100)
+    (set-strategic-number sn-food-gatherer-percentage 100)
+    (disable-self)
+)

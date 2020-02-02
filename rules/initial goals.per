@@ -1,0 +1,14 @@
+; Set initial active goals
+(defrule 
+    (true)
+    =>
+    
+    (set-goal goal-train-villagers active)
+    (set-goal goal-resume-villager-training inactive)
+    (set-goal goal-build-first-house active)
+    (set-goal goal-locate-boars active)
+    (set-goal goal-consume-current-boar inactive)
+    (set-goal goal-lure-new-boar inactive)
+    (set-goal goal-kill-lured-boar inactive)
+    (disable-self)
+)

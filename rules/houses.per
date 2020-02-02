@@ -1,0 +1,44 @@
+; Complete first house goal
+(defrule
+    (building-type-count house > 0)
+    =>
+
+    (set-goal goal-build-first-house complete)
+    (up-assign-builders c: house c: 1)
+    (disable-self)
+)
+
+; Build houses in the feudal age
+(defrule
+    (current-age == feudal-age)
+    (population-headroom > 0)
+    (housing-headroom <= 2)
+    (up-pending-objects c: house == 0)
+    =>
+
+    (build house)
+)
+
+; Build houses until Feudal threshold or extended dark age
+(defrule 
+    (current-age == dark-age)
+    (population-headroom > 0)
+    (housing-headroom <= 2)
+    (up-pending-objects c: house == 0)
+    (or 
+        (building-type-count house < 4 )
+        (goal goal-hit-feudal-time failed)
+    )
+    =>
+
+    (build house)
+)
+
+; Build first house with multiple villagers
+(defrule
+    (goal goal-build-first-house active) 
+    => 
+
+    (up-assign-builders c: house c: 3)
+    (disable-self)
+)

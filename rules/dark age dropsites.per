@@ -1,0 +1,62 @@
+; Complete first mill goal
+(defrule
+    (building-type-count mill >= 1)
+    =>
+
+    (set-goal goal-build-first-mill complete)
+    (disable-self)
+)
+
+; Build a lumber camp after mill
+(defrule
+    (goal goal-build-first-mill complete) 
+    =>
+
+    (set-goal goal-build-first-lumber-camp active)
+    (disable-self)
+)
+
+; Build first lumber camp
+(defrule
+    (goal goal-build-first-lumber-camp active)
+    (can-build lumber-camp)
+    =>
+
+    (build lumber-camp)
+    (disable-self)
+)
+
+; Complete build first lumber camp
+(defrule
+    (goal goal-build-first-lumber-camp active)
+    (building-type-count lumber-camp > 0)
+    =>
+
+    (set-goal goal-build-first-lumber-camp complete)
+    (set-goal goal-deprioritize-lumber-camps active)
+)
+
+; Begin building lumber camps only if really really needed
+(defrule
+    (goal goal-deprioritize-lumber-camps active) 
+    (can-build lumber-camp)
+    (dropsite-min-distance wood > low-priority-lumber-drop-distance) 
+    =>
+
+    (build lumber-camp)
+)
+
+; Build a mill when stuff is too far away or when low on sheep
+(defrule
+    (building-type-count-total mill == 0)
+    (game-time > 30)
+    (resource-found food)
+    (or 
+        (unit-type-count sheep == 0)
+        (dropsite-min-distance food > 3)
+    )
+    =>
+
+    (build mill)
+    (disable-self)
+)

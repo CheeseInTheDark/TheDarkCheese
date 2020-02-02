@@ -1,0 +1,24 @@
+; Research loom if house stuck, food stuck, or population is 25 and can't research feudal
+(defrule
+    (can-research ri-loom)
+    (not (can-research feudal-age))
+    (up-pending-objects c: villager == 0)
+    (or
+        (not (can-afford-unit villager))
+        (or 
+            (housing-headroom == 0)
+            (and
+                (population >= minimum-dark-age-population)
+                (and 
+                    (current-age == dark-age)
+                    (not (can-afford-research feudal-age))
+                )
+            )
+        )
+    )
+    =>
+
+    (enable-timer timer-town-center-free-soon dark-age-town-center-task-duration)
+    (research ri-loom)
+    (disable-self)
+)

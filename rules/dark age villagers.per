@@ -1,0 +1,92 @@
+; Train villagers
+; This happens when food is available, or when extended dark age has been detected
+(defrule
+    (goal goal-train-villagers active)
+    (civilian-population < max-villagers)
+    (current-age == dark-age)
+    (not
+        (and
+            (population >= minimum-dark-age-population)
+            (can-research feudal-age)
+        ) 
+    )
+    (not
+        (and
+            (up-research-status c: ri-loom < research-pending)
+            (and
+                (population == extended-dark-age-pop-threshold)
+                (can-research ri-loom)
+            )
+        )
+    )
+    =>
+
+    (train villager)
+)
+
+; Indicate a need to resume villager training
+(defrule
+    (goal goal-train-villagers active)
+    (goal goal-resume-villager-training inactive)
+    (up-pending-objects c: villager == 0)
+    (not (can-afford-unit villager))
+    =>
+
+    (set-goal goal-resume-villager-training active)
+)
+
+; Deactivate resume villager training goal
+(defrule
+    (goal goal-resume-villager-training active)
+    (or
+        (up-pending-objects c: villager > 0)
+        (up-research-status c: feudal-age >= research-pending)
+    )
+    =>
+
+    (set-goal goal-resume-villager-training inactive)
+)
+
+; Return food while trying to resume villager training, particularly from hunting
+(defrule
+    (goal goal-resume-villager-training active)
+    =>
+
+    (up-drop-resources food > 10)
+)
+
+; Start villager timer if only one in queue and another can't be afforded, or loom is being researched
+(defrule
+    (or
+        (up-pending-objects c: villager == 1)
+        (up-research-status c: ri-loom == research-pending)
+    )
+    (not (can-afford-unit villager))
+    (up-timer-status timer-town-center-free-soon == timer-disabled)
+    =>
+
+    (enable-timer timer-town-center-free-soon dark-age-town-center-task-duration)
+)
+
+; Stop timer if another villager can be trained or is queued
+(defrule
+    (or
+        (up-pending-objects c: villager > 1)
+        (can-afford-unit villager)
+    )
+    (up-timer-status timer-town-center-free-soon == timer-running)
+    =>
+
+    (disable-timer timer-town-center-free-soon)
+)
+
+; Return food if needed for a villager soon
+(defrule
+    (up-pending-objects c: villager == 1)
+    (not (can-afford-unit villager))
+    (timer-triggered timer-town-center-free-soon)
+    =>
+
+    (disable-timer timer-town-center-free-soon)
+    (up-drop-resources food c: 5)
+)
